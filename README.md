@@ -7,7 +7,7 @@ consistency and latency. The tests in this solution include:
 
 ### 1. Read latency between single region and multi-region replicated accounts
 
-This test shows the difference in read latency for an account with a single master in SouthEast Asia region with a front end 
+This test shows the difference in read latency for an account with a single master in East US 2 with a front end
 reading from it in West US 2. The next test shows the drastic improvement in latency with data locality when the account is 
 replicated to West US 2.
 
@@ -43,14 +43,11 @@ To deploy the Cosmos DB accounts for this solution, follow the steps below.
 
 ### Steps
 
-- Click "Deploy to Azure" below
-- Enter a resource group name and location
-- Enter a unique string to act as a prefix to make your Cosmos DB accounts unique
-- When the script is complete, click on the Outputs tab
-- Open the AppSettings.json for the solution on your local machine
-- Copy the values for the endpoints and keys from each account to their corresponding placeholder in AppSettings.json
+1. Click **Deploy to Azure**, or deploy `infra/main.bicep` using Azure CLI. Use a **dedicated resource group** and a globally unique `environmentName` prefix. The deployment creates seven accounts, their databases, containers, stored procedures and a user-assigned managed identity. Key authentication is disabled.
+2. Choose the identity that will run the demos. On an Azure VM, attach the deployed identity (output `managedIdentityResourceId`) to the VM and set `AZURE_CLIENT_ID` to the `managedIdentityClientId` output before starting Visual Studio. For local development, set the optional deployment parameter `developerPrincipalId` to your user's **object ID** (`az ad signed-in-user show --query id -o tsv`) and sign in as that user with Azure CLI or Visual Studio. The template grants Cosmos DB Built-in Data Contributor on each account; allow time for the assignments to propagate.
+3. In the deployment **Outputs**, find `endpoints`. Create `source/appSettings.local.json` as a JSON object using each `setting` as the property name and its full `endpoint` URI as the value. The demos use `DefaultAzureCredential`; no account keys are required.
 
-<a href="https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fazurecosmosdb%2Fglobal-distribution-demos%2Ftree%2Fmain%2Finfra%2Fazuredeploy.json" target="_blank">
+<a href="https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FAzureCosmosDB%2Fglobal-distribution-demos%2Fmain%2Finfra%2Fazuredeploy.json" target="_blank">
     <img src="http://azuredeploy.net/deploybutton.png"/>
 </a>
 
@@ -58,8 +55,7 @@ To deploy the Cosmos DB accounts for this solution, follow the steps below.
 
 These tests are designed to run from a Windows VM in West US 2. Due to the Multi-Master Failover Test, this will need to be a Windows 10 VM.
 The VM should be configured with a minimum 4 vCPU's and 16 GB of memory with RDP enabled. After the VM has been provisioned, RDP into it 
-and install Visual Studio 2019, then copy the solution folder to the VM, or connect VS to your forked repo and clone it locally to the 
-VM (with the updated app.config).
+and install Visual Studio with .NET 9 support, then copy or clone the solution to the VM and configure `source/appSettings.local.json` there.
 
 To run the demo, RDP into the VM, open the solution folder, launch the solution and press F5.
 
@@ -68,8 +64,7 @@ To run the demo, RDP into the VM, open the solution folder, launch the solution 
 SLA-based Cosmos DB latency metrics.
 
 [!Note]
-> You can modify this project to run from different regions but you will first need to modify the ARM template that deploys the Cosmos 
-accounts, then modify the AppSettings.json file to match the new regions.
+> To change regions, edit `infra/main.bicep` and the corresponding settings in `source/AppSettings.json`. Regenerate the portal template with `bicep build infra/main.bicep --outfile infra/azuredeploy.json`.
 
 ## Configure the project to run the Multi-Master Failover Test
 
@@ -102,10 +97,7 @@ Finally verify that the Interop.NetFwTypeLib appears in COM folder
 
 ## Initializing the Demos
 
-After the accounts are provisioned you can launch the application. Before running any demos you must run the "Initialize" menu item first.
-Running Initialize will provision 9 databases and 11 containers. Throughput is set at the container level at 400 RU/s.
+After deployment, use **Initialize** to check access and seed empty read-benchmark partitions. Read and failover demos also seed on demand using the deployed `BulkImport` procedure. Existing data is reused.
 
 [!IMPORTANT]
-> This solution has 11 containers provisioned at 400 RU/s each. It is recommended that you run "Initialize" each time you run this 
-solution and "Clean up" when you are done which will delete all the databases and containers for this sample. This will reduce your 
-costs to zero for Cosmos DB. You may also want to Stop the VM as well if not being used.
+> The ten containers have 400 RU/s each, billed in each replicated region. Exiting the app does not stop charges. When finished, delete the dedicated demo resource group in Azure after checking its contents. The app's data-plane identity cannot delete infrastructure.

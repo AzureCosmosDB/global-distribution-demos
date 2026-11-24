@@ -20,15 +20,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="spBulkUpload.js">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-    <Content Include="spConflictUDP.js">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="Azure.Identity" Version="1.13.2" />
     <PackageReference Include="Bogus" Version="35.6.1" />
     <PackageReference Include="Microsoft.Azure.Cosmos" Version="3.47.0" />

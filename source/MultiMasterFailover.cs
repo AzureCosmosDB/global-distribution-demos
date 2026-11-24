@@ -1,8 +1,8 @@
-﻿using Azure.Identity;
-using Microsoft.Azure.Cosmos;
+﻿using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
 
@@ -36,20 +36,17 @@ namespace CosmosGlobalDistDemosCore
                         testRegion = configuration["testRegion"],
                         targetRegion = configuration["multiMasterReadRegion"],
                         endpoint = configuration["MultiMasterEndpoint"],
-                        key = configuration["MultiMasterKey"],
                         writeRegion = configuration["multiMasterWriteRegion"],
                         readRegion = configuration["multiMasterReadRegion"],
                         databaseId = configuration["databaseId"],
                         containerId = configuration["containerId"],
-                        partitionKeyPath = configuration["partitionKeyPath"],
                         partitionKeyValue = configuration["partitionKeyValue"]
                     }
                 };
 
                 foreach (Benchmark benchmark in benchmarks)
                 {
-                    benchmark.client = new CosmosClient(benchmark.endpoint, benchmark.key, new CosmosClientOptions { ApplicationRegion = "East US 2" });
-                    //benchmark.client = new CosmosClient(benchmark.endpoint, new DefaultAzureCredential(), new CosmosClientOptions { ApplicationRegion = benchmark.targetRegion });
+                    benchmark.client = Helpers.CreateClient(benchmark.endpoint, benchmark.targetRegion);
                 }
             }
             catch (Exception e)
@@ -85,51 +82,45 @@ namespace CosmosGlobalDistDemosCore
                 //Run benchmarks, collect results
                 Benchmark benchmark = benchmarks[0];
 
-                //Verify the benchmark is setup
-                await Benchmark.InitializeBenchmark(benchmark);
-
-                List<string> ids = await Benchmark.GetIds(benchmark);
+                List<string> ids = await Benchmark.GetOrSeedIds(benchmark);
                 string id = ids[0];
 
-                bool exit = false;
                 int seconds = 0;
 
-                string initialRegion = "";
-                string failoverRegion;
-
                 ItemResponse<SampleCustomer> response = await benchmark.container.ReadItemAsync<SampleCustomer>(id: id, partitionKey: new PartitionKey(benchmark.partitionKeyValue));
-                initialRegion = Helpers.ParseRegionFromDiag(response.Diagnostics.ToString());
-                failoverRegion = initialRegion;
-
-                string regionalEndpoint = Helpers.ParseEndpointFromDiag(response.Diagnostics.ToString());
-                string ipAddress = Dns.GetHostAddresses(regionalEndpoint)[0].ToString();
+                var initialContacts = response.Diagnostics.GetContactedRegions();
+                if (initialContacts.Count != 1)
+                    throw new InvalidOperationException("The initial read must contact exactly one region before simulating failover.");
+                var (initialRegion, regionalEndpoint) = initialContacts[0];
+                string ipAddress = Dns.GetHostAddresses(regionalEndpoint.Host)[0].ToString();
 
                 Console.WriteLine($"Initiate Reads from {initialRegion}");
 
                 Console.WriteLine($"Simulating regional failure by creating a Firewall Rule blocking the ip address for {initialRegion}");
                 Firewall.AddFirewallRule("Failover Test", ipAddress);
 
-                while (!exit)
+                try
                 {
-                    
-                    response = await benchmark.container.ReadItemAsync<SampleCustomer>(id: id, partitionKey: new PartitionKey(benchmark.partitionKeyValue));
-                    failoverRegion = Helpers.ParseRegionFromDiag(response.Diagnostics.ToString());
-                    Console.WriteLine($"Read Region: {failoverRegion}, IpAddress: {ipAddress}");
-
-                    //We need to do a create operation to force the diagnostic strings to flip in the SDK client
-                    await benchmark.client.CreateDatabaseIfNotExistsAsync("newDB");
-
-                    if (failoverRegion != initialRegion)
+                    while (true)
                     {
-                        Console.WriteLine($"Region failover has occurred. Complete in {seconds} seconds\nPress any key to continue\n...");
-                        Console.ReadKey(true);
-                        Firewall.RemoveFirewallRule("Failover Test");
-                        exit = true;
+                        response = await benchmark.container.ReadItemAsync<SampleCustomer>(id: id, partitionKey: new PartitionKey(benchmark.partitionKeyValue));
+                        var regions = response.Diagnostics.GetContactedRegions().Select(contact => contact.regionName).ToList();
+                        Console.WriteLine($"Regions contacted: {string.Join(", ", regions)}");
+
+                        if (regions.Count > 0 && !regions.Contains(initialRegion))
+                        {
+                            Console.WriteLine($"Region failover has occurred. Complete in {seconds} seconds\nPress any key to continue\n...");
+                            Console.ReadKey(true);
+                            break;
+                        }
+
+                        await Task.Delay(1000);
+                        seconds++;
                     }
-
-                    await Task.Delay(1000);
-                    seconds++;
-
+                }
+                finally
+                {
+                    Firewall.RemoveFirewallRule("Failover Test");
                 }
             }
             catch (Exception e)
@@ -137,13 +128,6 @@ namespace CosmosGlobalDistDemosCore
                 Console.WriteLine(e.Message + "\nPress any key to continue");
                 Console.ReadKey();
             }
-        }
-
-
-
-        public async Task CleanUp()
-        {
-            await Benchmark.CleanUp(benchmarks);
         }
     }
 }

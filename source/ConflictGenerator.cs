@@ -3,20 +3,11 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using System.Net;
-using System.IO;
 using Microsoft.Azure.Cosmos;
-using Microsoft.Azure.Cosmos.Scripts;
 using System.Linq;
 
 namespace CosmosGlobalDistDemosCore
 {
-    public enum ConflictResolutionType
-    {
-        LastWriterWins = 0,
-        MergeProcedure = 1,
-        None = 2
-    }
-
     class ReplicaRegion
     {
         public string region;
@@ -27,86 +18,19 @@ namespace CosmosGlobalDistDemosCore
     class ConflictGenerator
     {
         public string testName;
-        public ConflictResolutionType conflictResolutionType;
         public string endpoint;
-        public string key;
         public string databaseId;
         public string containerId;
         public List<ReplicaRegion> replicaRegions;
-        public string partitionKeyPath;
         public string partitionKeyValue;
 
         public async Task InitializeConflicts(ConflictGenerator conflict)
         {
-            //Use West US 2 region to test if containers have been created and create them if needed.
-            ReplicaRegion replicaRegion = conflict.replicaRegions.Find(s => s.region == "West US 2");
-
-            
-            if (replicaRegion.container == null)
-            { //Create the containers
-                try
-                {
-                    replicaRegion.container = replicaRegion.client.GetContainer(conflict.databaseId, conflict.containerId);
-                    await replicaRegion.container.ReadContainerAsync(); //ReadContainer to see if it is created
-                }
-                catch
-                {
-                    DatabaseResponse dbResponse = await replicaRegion.client.CreateDatabaseIfNotExistsAsync(conflict.databaseId);
-                    Database database = dbResponse.Database;
-                    ContainerResponse cResponse;
-
-                    //Create containers with different conflict resolution policies
-                    switch(conflict.conflictResolutionType)
-                    {
-                        case ConflictResolutionType.LastWriterWins:
-                            cResponse = await database.CreateContainerIfNotExistsAsync(new ContainerProperties(conflict.containerId, conflict.partitionKeyPath)
-                            {
-                                ConflictResolutionPolicy = new ConflictResolutionPolicy()
-                                {
-                                    Mode = ConflictResolutionMode.LastWriterWins,
-                                    ResolutionPath = "/userDefinedId"
-                                }
-                            }, 400);
-                            break;
-                        case ConflictResolutionType.MergeProcedure:
-                            string scriptId = "MergeProcedure";
-                            cResponse = await database.CreateContainerIfNotExistsAsync(new ContainerProperties(conflict.containerId, conflict.partitionKeyPath)
-                            {
-                                ConflictResolutionPolicy = new ConflictResolutionPolicy()
-                                {
-                                    Mode = ConflictResolutionMode.Custom,
-                                    ResolutionProcedure = $"dbs/{conflict.databaseId}/colls/{conflict.containerId}/sprocs/{scriptId}"
-                                }
-                            }, 400);
-
-                            //Conflict Merge Procedure
-                            string body = File.ReadAllText(@"spConflictUDP.js");
-                            StoredProcedureResponse sproc = await cResponse.Container.Scripts.CreateStoredProcedureAsync(new StoredProcedureProperties(scriptId, body));
-                            break;
-
-                        case ConflictResolutionType.None:
-                            cResponse = await database.CreateContainerIfNotExistsAsync(new ContainerProperties(conflict.containerId, conflict.partitionKeyPath)
-                            {
-                                ConflictResolutionPolicy = new ConflictResolutionPolicy()
-                                {
-                                    Mode = ConflictResolutionMode.Custom
-                                }
-                            }, 400);
-                            break;
-
-                        default:
-                            throw new ArgumentOutOfRangeException();
-                    }
-                    replicaRegion.container = cResponse.Container;
-                }
-            }
-
             //Initialize and warm up all regional container references
             foreach(ReplicaRegion region in conflict.replicaRegions)
             {
                 region.container = region.client.GetContainer(conflict.databaseId, conflict.containerId);
-                //Verify container has replicated
-                await Helpers.VerifyContainerReplicated(region.container);
+                await region.container.ReadContainerAsync();
                 await WarmUp(region.container);
             }
         }
@@ -266,7 +190,7 @@ namespace CosmosGlobalDistDemosCore
             {   //Warm up container with point read for item that doesn't exist
                 await container.ReadItemAsync<dynamic>("0", new PartitionKey("0"));
             }
-            catch { }
+            catch (CosmosException e) when (e.StatusCode == HttpStatusCode.NotFound) { }
         }
         private async Task VerifyItemReplicated(ConflictGenerator conflict, SampleCustomer customer)
         {
@@ -414,30 +338,6 @@ namespace CosmosGlobalDistDemosCore
                 _local = inst = new Random(seed);
             }
             return inst.Next(minValue, maxValue);
-        }
-        public static async Task CleanUp(List<ConflictGenerator> conflicts)
-        {
-            try
-            {
-                foreach (ConflictGenerator conflict in conflicts)
-                {
-                    //Get reference to West US 2 region
-                    ReplicaRegion region = conflict.replicaRegions.Find(replicaRegion => replicaRegion.region == "West US 2");
-                    await region.client.GetDatabase(conflict.databaseId).DeleteAsync();
-                }
-            }
-            catch { }
-        }
-
-        public static async Task CleanUp(ConflictGenerator conflict)
-        {
-            try
-            {
-                //Get reference to West US 2 region
-                ReplicaRegion region = conflict.replicaRegions.Find(replicaRegion => replicaRegion.region == "West US 2");
-                await region.client.GetDatabase(conflict.databaseId).DeleteAsync();   
-            }
-            catch { }
         }
     }
 }

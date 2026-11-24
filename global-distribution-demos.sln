@@ -4,6 +4,8 @@ VisualStudioVersion = 17.5.2.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CosmosGlobalDistDemosCore", "source\CosmosGlobalDistDemosCore.csproj", "{C88BDF35-D1EE-0797-A0DF-9FC3AA32E8FD}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CosmosGlobalDistDemos.Tests", "tests\CosmosGlobalDistDemos.Tests.csproj", "{6F93D448-743F-4F85-8531-91FB2257EA18}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -14,6 +16,10 @@ Global
 		{C88BDF35-D1EE-0797-A0DF-9FC3AA32E8FD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C88BDF35-D1EE-0797-A0DF-9FC3AA32E8FD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C88BDF35-D1EE-0797-A0DF-9FC3AA32E8FD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6F93D448-743F-4F85-8531-91FB2257EA18}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6F93D448-743F-4F85-8531-91FB2257EA18}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6F93D448-743F-4F85-8531-91FB2257EA18}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6F93D448-743F-4F85-8531-91FB2257EA18}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

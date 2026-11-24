@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
+using Azure.Identity;
 using Microsoft.Azure.Cosmos;
 using Newtonsoft.Json;
 using NetFwTypeLib;
@@ -13,54 +13,11 @@ namespace CosmosGlobalDistDemosCore
     {
         public static string Line = new string('-', 73);
 
-        public static async Task<bool> VerifyContainerReplicated (Container container)
-        {
-            bool isReplicated = false;
-            bool notifyOnce = false;
+        private static readonly DefaultAzureCredential Credential = new DefaultAzureCredential();
 
-            while (!isReplicated)
-            {
-                try
-                {
-                    await container.ReadContainerAsync();
-                    isReplicated = true; //hit this line then container has replicated to other regions.
-                    if(notifyOnce)
-                        Console.WriteLine("Resource is replicated and available");
-                }
-                catch
-                {
-                    if (!notifyOnce)
-                    {
-                        Console.WriteLine("Waiting for container to replicate in all regions");
-                        notifyOnce = true;
-                    }
-                    //swallow any errors and wait 250ms to retry
-                    await Task.Delay(250);
-                }
-            }
-            return isReplicated;
-        }
+        public static CosmosClient CreateClient(string endpoint, string region) =>
+            new CosmosClient(endpoint, Credential, new CosmosClientOptions { ApplicationRegion = region });
 
-        public static string ParseRegionFromDiag(string json)
-        {
-            int start = json.IndexOf("//") + "//".Length;
-            int end = json.IndexOf(".documents.");
-            string accountName = json.Substring(start, end - start);
-            int start2 = accountName.LastIndexOf("-") + "-".Length;
-            string region = accountName.Substring(start2, accountName.Length - start2);
-
-            return region;
-        }
-
-        public static string ParseEndpointFromDiag(string json)
-        {
-            string suffix = ".documents.azure.com";
-            int start = json.IndexOf("//") + "//".Length;
-            int end = json.IndexOf(suffix) + suffix.Length;
-            string endpoint = json.Substring(start, end - start);
-
-            return endpoint;
-        }
     }
 
     public class SampleCustomer

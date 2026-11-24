@@ -1,6 +1,4 @@
-﻿using Microsoft.Azure.Cosmos;
-using Azure.Identity;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -37,12 +35,10 @@ namespace CosmosGlobalDistDemosCore
                         testRegion = configuration["testRegion"],
                         targetRegion = configuration["singleMasterReadRegion"],
                         endpoint = configuration["SingleMasterEndpoint"],
-                        key = configuration["SingleMasterKey"],
                         writeRegion = configuration["singleMasterWriteRegion"],
                         readRegion = configuration["singleMasterReadRegion"],
                         databaseId = configuration["databaseId"],
                         containerId = configuration["containerId"],
-                        partitionKeyPath = configuration["partitionKeyPath"],
                         partitionKeyValue = configuration["partitionKeyValue"]
                     },
 
@@ -54,12 +50,10 @@ namespace CosmosGlobalDistDemosCore
                         testRegion = configuration["testRegion"],
                         targetRegion = configuration["singleMasterWriteRegion"],
                         endpoint = configuration["SingleMasterEndpoint"],
-                        key = configuration["SingleMasterKey"],
                         writeRegion = configuration["singleMasterWriteRegion"],
                         readRegion = configuration["singleMasterReadRegion"],
                         databaseId = configuration["databaseId"],
                         containerId = configuration["containerId"],
-                        partitionKeyPath = configuration["partitionKeyPath"],
                         partitionKeyValue = configuration["partitionKeyValue"]
                     },
 
@@ -71,12 +65,10 @@ namespace CosmosGlobalDistDemosCore
                         testRegion = configuration["testRegion"],
                         targetRegion = configuration["multiMasterReadRegion"],
                         endpoint = configuration["MultiMasterEndpoint"],
-                        key = configuration["MultiMasterKey"],
                         writeRegion = configuration["multiMasterWriteRegion"],
                         readRegion = configuration["multiMasterReadRegion"],
                         databaseId = configuration["databaseId"],
                         containerId = configuration["containerId"],
-                        partitionKeyPath = configuration["partitionKeyPath"],
                         partitionKeyValue = configuration["partitionKeyValue"]
                     },
 
@@ -88,20 +80,17 @@ namespace CosmosGlobalDistDemosCore
                         testDescription = $"Test 100 Writes against Multi-Master account with write region in West US 2 from West US 2",
                         targetRegion = configuration["multiMasterWriteRegion"],
                         endpoint = configuration["MultiMasterEndpoint"],
-                        key = configuration["MultiMasterKey"],
                         writeRegion = configuration["multiMasterWriteRegion"],
                         readRegion = configuration["multiMasterReadRegion"],
                         databaseId = configuration["databaseId"],
                         containerId = configuration["containerId"],
-                        partitionKeyPath = configuration["partitionKeyPath"],
                         partitionKeyValue = configuration["partitionKeyValue"]
                     }
                 };
 
                 foreach (Benchmark benchmark in benchmarks)
                 {
-                    benchmark.client = new CosmosClient(benchmark.endpoint, benchmark.key, new CosmosClientOptions { ApplicationRegion = benchmark.targetRegion });
-                    //benchmark.client = new CosmosClient(benchmark.endpoint, new DefaultAzureCredential(), new CosmosClientOptions { ApplicationRegion = benchmark.targetRegion });
+                    benchmark.client = Helpers.CreateClient(benchmark.endpoint, benchmark.targetRegion);
                 }
             }
             catch (Exception e)
@@ -160,10 +149,6 @@ namespace CosmosGlobalDistDemosCore
                 Console.WriteLine(e.Message + "\nPress any key to continue");
                 Console.ReadKey();
             }
-        }
-        public async Task CleanUp()
-        {
-            await Benchmark.CleanUp(benchmarks);
         }
     }
 }

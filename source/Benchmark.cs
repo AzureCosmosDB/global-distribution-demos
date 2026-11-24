@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Azure.Cosmos;
@@ -25,79 +24,47 @@ namespace CosmosGlobalDistDemosCore
         public CosmosClient client;
         public Container container;
         public string endpoint;
-        public string key;
         public string readRegion;
         public string writeRegion;
         public string databaseId;
         public string containerId;
-        public string partitionKeyPath;
         public string partitionKeyValue;
         public ResultSummary resultSummary;
 
         public static async Task InitializeBenchmark(Benchmark benchmark)
         {
-            if (benchmark.container == null)
+            if (benchmark.benchmarkType == BenchmarkType.Read)
             {
-                try
-                {
-                    benchmark.container = benchmark.client.GetContainer(benchmark.databaseId, benchmark.containerId);
-                    await benchmark.container.ReadContainerAsync();  //ReadContainer to see if it is created
-                }
-                catch
-                {
-                    Database database = await benchmark.client.CreateDatabaseIfNotExistsAsync(benchmark.databaseId);
-                    Container container = await database.CreateContainerIfNotExistsAsync(benchmark.containerId, benchmark.partitionKeyPath, 400);
-                    benchmark.container = container;
-                    await Helpers.VerifyContainerReplicated(benchmark.container); //Verify container has replicated
-
-
-                    if (benchmark.benchmarkType == BenchmarkType.Read)
-                    {
-                        //Verify there is data in the container for the read benchmark to test
-                        List<string> ids = await GetIds(benchmark);
-                        if (ids.Count == 0)
-                        {
-                            Console.WriteLine("Pre-loading data for benchmark...");
-                            await LoadData(benchmark);
-                        }
-                    }
-                }
+                await GetOrSeedIds(benchmark);
+            }
+            else
+            {
+                benchmark.container ??= benchmark.client.GetContainer(benchmark.databaseId, benchmark.containerId);
+                await benchmark.container.ReadContainerAsync();
             }
         }
+
         private static async Task LoadData(Benchmark benchmark)
         {
-            try
+            Console.WriteLine("Pre-loading data for benchmark...");
+            List<SampleCustomer> customers = SampleCustomer.GenerateCustomers(benchmark.partitionKeyValue, 100);
+            int inserted = 0;
+
+            while (inserted < customers.Count)
             {
-                List<SampleCustomer> customers = SampleCustomer.GenerateCustomers(benchmark.partitionKeyValue, 100);
-
-                //Stored Proc for bulk inserting data
-                string scriptId = "BulkImport";
-                string body = File.ReadAllText(@"spBulkUpload.js");
-                StoredProcedureResponse sproc = await benchmark.container.Scripts.CreateStoredProcedureAsync(new StoredProcedureProperties(scriptId, body));
-
-                int inserted = 0;
-
-                while (inserted < customers.Count)
-                {
-                    dynamic[] args = new dynamic[] { customers.Skip(inserted) };
-                    StoredProcedureExecuteResponse<int> result = await benchmark.container.Scripts.ExecuteStoredProcedureAsync<int>(scriptId, new PartitionKey(benchmark.partitionKeyValue), args);
-                    inserted += result.Resource;
-                    Console.WriteLine($"Inserted {inserted} items.");
-                }
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.Message + "\nPress any key to continue");
-                Console.ReadKey();
+                dynamic[] args = { customers.Skip(inserted).ToArray() };
+                StoredProcedureExecuteResponse<int> result = await benchmark.container.Scripts.ExecuteStoredProcedureAsync<int>(
+                    "BulkImport", new PartitionKey(benchmark.partitionKeyValue), args);
+                if (result.Resource <= 0)
+                    throw new InvalidOperationException("BulkImport inserted no items. Check container throughput before retrying.");
+                inserted += result.Resource;
+                Console.WriteLine($"Inserted {inserted} items.");
             }
         }
         public static async Task ReadBenchmark(Benchmark benchmark)
         {
-            //Verify the benchmark is setup
-            await Benchmark.InitializeBenchmark(benchmark);
-
             //Fetch the id values to do point reads on
-            List<string> ids = await GetIds(benchmark);
+            List<string> ids = await GetOrSeedIds(benchmark);
 
             //Console.WriteLine($"\nTest {ids.Count} {GetBenchmarkType(benchmark)} against {benchmark.testName} account in {benchmark.readRegion} from {benchmark.testRegion}\nPress any key to continue\n...");
             Console.WriteLine($"\n{benchmark.testDescription}\nPress any key to continue\n...");
@@ -153,12 +120,32 @@ namespace CosmosGlobalDistDemosCore
 
             OutputResults(benchmark, results);
         }
-        public static async Task<List<string>> GetIds(Benchmark benchmark)
+        public static async Task<List<string>> GetOrSeedIds(Benchmark benchmark)
+        {
+            benchmark.container ??= benchmark.client.GetContainer(benchmark.databaseId, benchmark.containerId);
+            List<string> ids = await GetIds(benchmark);
+            if (ids.Count > 0)
+                return ids;
+
+            await LoadData(benchmark);
+            // An eventual-consistency read region may not see the writes immediately.
+            Stopwatch elapsed = Stopwatch.StartNew();
+            do
+            {
+                ids = await GetIds(benchmark);
+                if (ids.Count > 0)
+                    return ids;
+                await Task.Delay(250);
+            } while (elapsed.Elapsed < TimeSpan.FromSeconds(30));
+            throw new TimeoutException($"BulkImport completed but no items are visible in {benchmark.targetRegion} for partition {benchmark.partitionKeyValue}.");
+        }
+
+        private static async Task<List<string>> GetIds(Benchmark benchmark)
         {
             List<string> results = new List<string>();
             QueryDefinition query = new QueryDefinition("SELECT top 100 value c.id FROM c");
 
-            FeedIterator<string> resultSetIterator = benchmark.container.GetItemQueryIterator<string>(
+            using FeedIterator<string> resultSetIterator = benchmark.container.GetItemQueryIterator<string>(
                 query, requestOptions: new QueryRequestOptions() { PartitionKey = new PartitionKey(benchmark.partitionKeyValue) });
 
             while (resultSetIterator.HasMoreResults)
@@ -204,17 +191,6 @@ namespace CosmosGlobalDistDemosCore
             Console.WriteLine($"Average Latency:\t{averageLatency} ms");
             Console.WriteLine($"Average Request Units:\t{averageRu} RUs\n\nPress any key to continue...\n");
             Console.ReadKey(true);
-        }
-        public static async Task CleanUp(List<Benchmark> benchmarks)
-        {
-            try
-            {
-                foreach (Benchmark benchmark in benchmarks)
-                {
-                    await benchmark.client.GetDatabase(benchmark.databaseId).DeleteAsync();
-                }
-            }
-            catch { }
         }
     }
 

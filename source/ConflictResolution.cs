@@ -1,6 +1,4 @@
-﻿using Azure.Identity;
-using Microsoft.Azure.Cosmos;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -31,12 +29,9 @@ namespace CosmosGlobalDistDemosCore
                 lww = new ConflictGenerator
                 {
                     testName = "Generate insert conflicts on container with Last Writer Wins Policy (Max UserDefinedId Wins).",
-                    conflictResolutionType = ConflictResolutionType.LastWriterWins,
                     endpoint = configuration["MultiMasterEndpoint"],
-                    key = configuration["MultiMasterKey"],
                     databaseId = configuration["databaseId"],
                     containerId = configuration["LwwPolicyContainer"],
-                    partitionKeyPath = configuration["partitionKeyPath"],
                     partitionKeyValue = configuration["partitionKeyValue"],
                     replicaRegions = new List<ReplicaRegion>()
                 };
@@ -44,12 +39,9 @@ namespace CosmosGlobalDistDemosCore
                 custom = new ConflictGenerator
                 {
                     testName = "Generate insert conflicts on container with User Defined Procedure Policy (Min UserDefinedId Wins).",
-                    conflictResolutionType = ConflictResolutionType.MergeProcedure,
                     endpoint = configuration["MultiMasterEndpoint"],
-                    key = configuration["MultiMasterKey"],
                     databaseId = configuration["databaseId"],
                     containerId = configuration["UdpPolicyContainer"],
-                    partitionKeyPath = configuration["partitionKeyPath"],
                     partitionKeyValue = configuration["partitionKeyValue"],
                     replicaRegions = new List<ReplicaRegion>()
                 };
@@ -57,12 +49,9 @@ namespace CosmosGlobalDistDemosCore
                 none = new ConflictGenerator
                 {
                     testName = "Generate update conficts on container with no Policy defined, write to Conflicts Feed.",
-                    conflictResolutionType = ConflictResolutionType.None,
                     endpoint = configuration["MultiMasterEndpoint"],
-                    key = configuration["MultiMasterKey"],
                     databaseId = configuration["databaseId"],
                     containerId = configuration["NoPolicyContainer"],
-                    partitionKeyPath = configuration["partitionKeyPath"],
                     partitionKeyValue = configuration["partitionKeyValue"],
                     replicaRegions = new List<ReplicaRegion>()
                 };
@@ -74,22 +63,19 @@ namespace CosmosGlobalDistDemosCore
                     lww.replicaRegions.Add(new ReplicaRegion
                     {
                         region = region,
-                        client = new CosmosClient(lww.endpoint, lww.key, new CosmosClientOptions { ApplicationRegion = region })
-                        //client = new CosmosClient(lww.endpoint, new DefaultAzureCredential(), new CosmosClientOptions { ApplicationRegion = region })
+                        client = Helpers.CreateClient(lww.endpoint, region)
                     });
 
                     custom.replicaRegions.Add(new ReplicaRegion
                     {
                         region = region,
-                        client = new CosmosClient(custom.endpoint, custom.key, new CosmosClientOptions { ApplicationRegion = region })
-                        //client = new CosmosClient(custom.endpoint, new DefaultAzureCredential(), new CosmosClientOptions { ApplicationRegion = region })
+                        client = Helpers.CreateClient(custom.endpoint, region)
                     });
 
                     none.replicaRegions.Add(new ReplicaRegion
                     {
                         region = region,
-                        client = new CosmosClient(custom.endpoint, custom.key, new CosmosClientOptions { ApplicationRegion = region })
-                        //client = new CosmosClient(custom.endpoint, new DefaultAzureCredential(), new CosmosClientOptions { ApplicationRegion = region })
+                        client = Helpers.CreateClient(none.endpoint, region)
                     });
                 }
             }
@@ -165,13 +151,6 @@ namespace CosmosGlobalDistDemosCore
                 Console.WriteLine(e.Message + "\nPress any key to continue");
                 Console.ReadKey();
             }
-        }
-        public async Task CleanUp()
-        {
-            //await ConflictGenerator.CleanUp(conflicts);
-            await ConflictGenerator.CleanUp(lww);
-            await ConflictGenerator.CleanUp(custom);
-            await ConflictGenerator.CleanUp(none);
         }
     }
 }
