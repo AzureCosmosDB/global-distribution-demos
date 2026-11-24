@@ -16,7 +16,7 @@ namespace CosmosGlobalDistDemosCore
         public static async Task Main(string[] args)
         {
             IConfiguration configuration = new ConfigurationBuilder()
-                .AddJsonFile("appSettings.json")
+                .AddJsonFile("AppSettings.json")
                 .AddJsonFile("appSettings.local.json", optional: true)
                 .Build();
 

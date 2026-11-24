@@ -9,28 +9,18 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <COMReference Include="NetFwTypeLib.dll">
-      <Guid>58fbcf7c-e7a9-467c-80b3-fc65e8fcca08</Guid>
-      <VersionMajor>1</VersionMajor>
-      <VersionMinor>0</VersionMinor>
-      <Lcid>0</Lcid>
-      <WrapperTool>tlbimp</WrapperTool>
-      <Isolated>false</Isolated>
-    </COMReference>
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="Azure.Identity" Version="1.13.2" />
     <PackageReference Include="Bogus" Version="35.6.1" />
     <PackageReference Include="Microsoft.Azure.Cosmos" Version="3.47.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.2" />
     <PackageReference Include="Microsoft.Extensions.Configuration.FileExtensions" Version="9.0.2" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.2" />
-    <PackageReference Include="Microsoft.PowerShell.SDK" Version="7.5.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="appSettings.json">
+    <InternalsVisibleTo Include="CosmosGlobalDistDemos.Tests" />
+    <None Update="AppSettings.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="appSettings.local.json">

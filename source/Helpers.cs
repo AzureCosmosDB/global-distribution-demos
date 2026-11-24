@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using Azure.Identity;
 using Microsoft.Azure.Cosmos;
 using Newtonsoft.Json;
-using NetFwTypeLib;
-using System.Management.Automation;
 
 
 namespace CosmosGlobalDistDemosCore
@@ -59,69 +57,6 @@ namespace CosmosGlobalDistDemosCore
 
             return customerGenerator.Generate(number);
         }
-    }
-
-    public class Firewall
-    {
-
-        public static void AddFirewallRule(string ruleName, string ipAddress)
-        {
-            try
-            {
-                INetFwRule firewallRule = (INetFwRule)Activator.CreateInstance(Type.GetTypeFromProgID("HNetCfg.FwRule"));
-                firewallRule.Action = NET_FW_ACTION_.NET_FW_ACTION_BLOCK;
-                firewallRule.Description = "Block Multi-master";
-                firewallRule.Direction = NET_FW_RULE_DIRECTION_.NET_FW_RULE_DIR_OUT;
-                firewallRule.Enabled = true;
-                firewallRule.InterfaceTypes = "All";
-                firewallRule.Name = ruleName;
-                //firewallRule.Protocol = 6;// NET_FW_IP_PROTOCOL_.NET_FW_IP_PROTOCOL_TCP;
-                firewallRule.RemoteAddresses = ipAddress;
-
-                INetFwPolicy2 firewallPolicy = (INetFwPolicy2)Activator.CreateInstance(
-                    Type.GetTypeFromProgID("HNetCfg.FwPolicy2"));
-                firewallPolicy.Rules.Add(firewallRule);
-
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"Error: {e.Message}");
-            }
-        }
-
-        public static void AddFirewallRulePS(string ruleName, string ipAddress)
-        {
-            
-            PowerShell ps = PowerShell.Create();
-
-            string command = $"New-NetFirewallRule -DisplayName {ruleName} -Action Block -Direction Outbound -Enabled True -InterfaceType Any -RemoteAddress '{ipAddress}'";
-
-            ps.AddScript(command).Invoke();
-        }
-
-        public static void RemoveFirewallRule(string ruleName)
-        {
-            try
-            { 
-                INetFwPolicy2 firewallPolicy = (INetFwPolicy2)Activator.CreateInstance(
-                        Type.GetTypeFromProgID("HNetCfg.FwPolicy2"));
-                firewallPolicy.Rules.Remove(ruleName);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"Error: {e.Message}");
-            }
-        }
-
-        public static void RemoveFirewallRulePS(string ruleName)
-        {
-            PowerShell ps = PowerShell.Create();
-
-            string command = $"Remove-NetFirewallRule -DisplayName MultiMasterFailover {ruleName}";
-
-            ps.AddScript(command).Invoke();
-        }
-
     }
 
 }

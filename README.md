@@ -31,8 +31,7 @@ resolution modes where conflicts are written to the conflicts feed and then read
 
 ### 5. Multi-Master Failover
 
-This test conducts a failover in the SDK client in Multi-Master mode by adding a firewall rule in Windows to block the ip address for 
-the region being read from. Note: This requires the application runs on Windows 10 and Visual Studio be run as Administrator.
+This drill observes SDK point reads while an operator takes a region offline on a dedicated multi-write account, then brings it back online. See [Run and reset the failover drill](#run-and-reset-the-failover-drill). The app does not modify the account or the host firewall.
 
 ## Provisioning Cosmos DB accounts
 
@@ -53,7 +52,7 @@ To deploy the Cosmos DB accounts for this solution, follow the steps below.
 
 ## Provision Windows VM as Host
 
-These tests are designed to run from a Windows VM in West US 2. Due to the Multi-Master Failover Test, this will need to be a Windows 10 VM.
+These tests are designed to run from a VM in West US 2 for representative latency. The failover drill does not require Windows administrator privileges.
 The VM should be configured with a minimum 4 vCPU's and 16 GB of memory with RDP enabled. After the VM has been provisioned, RDP into it 
 and install Visual Studio with .NET 9 support, then copy or clone the solution to the VM and configure `source/appSettings.local.json` there.
 
@@ -66,34 +65,26 @@ SLA-based Cosmos DB latency metrics.
 [!Note]
 > To change regions, edit `infra/main.bicep` and the corresponding settings in `source/AppSettings.json`. Regenerate the portal template with `bicep build infra/main.bicep --outfile infra/azuredeploy.json`.
 
-## Configure the project to run the Multi-Master Failover Test
+## Run and reset the failover drill
 
-This test requires additional configuration in Visual Studio because it modifies the firewall settings on the Windows VM. Follow the 
-steps below to configure this test.
+Use only a dedicated demo account. **Offline region affects all clients and can lose writes that have not replicated.** Before starting, make sure the operator can perform both the offline and online operations on that account. These are control-plane permissions; do not grant them to the demo identity.
 
-### Add Dependancies
+1. Choose **Multi-Master Failover** in the app, then **F**. Note the account endpoint and preferred read region. Wait until the app observes a read from that region before changing anything.
+2. On that same account in the [Azure portal](https://learn.microsoft.com/azure/cosmos-db/how-to-manage-database-account#perform-forced-failover-for-your-azure-cosmos-db-account), open **Replicate data globally > Offline region**. Select the displayed region, review the warning, and confirm.
+3. Watch for a successful read served by another region. Then bring the original region back online as described below, **even if monitoring timed out or the app exited**. Escape stops observation; it does not reset the account.
 
-Right click Dependancies and select Add Reference.
+### Bring the region back online
 
-![Dependancies Pane](./assets/AddRef1.PNG)
+In Azure Cloud Shell **PowerShell**, signed in as the operator, copy the demo account's **Resource ID** from its portal properties and enter the display name of the exact region you took offline (for example, `West US 2`). This calls the Cosmos DB [Online Region](https://learn.microsoft.com/rest/api/cosmos-db-resource-provider/database-accounts/online-region?view=rest-cosmos-db-resource-provider-2025-10-15) operation. The app never makes this call.
 
-### Click Browse
+```powershell
+$accountId = Read-Host 'Resource ID of the demo Cosmos DB account'
+$region = Read-Host 'Region to bring back online'
+Invoke-AzRestMethod -Method POST -Path "$accountId/onlineRegion?api-version=2025-10-15" `
+    -Payload (@{ region = $region } | ConvertTo-Json) -WaitForCompletion -Confirm
+```
 
-Next click Browse on left hand side and then Browse button on the bottom of the dialog.
-
-![Browse](./assets/AddRef2.PNG)
-
-### Select FirewallAPI.dll
-
-Type in FirewallAPI.dll into the File Name box, then click Add.
-
-![Add](./assets/AddRef3.PNG)
-
-### Confirm Interop.NetFwTypeLib
-
-Finally verify that the Interop.NetFwTypeLib appears in COM folder
-
-![Verify](./assets/AddRef4.PNG)
+Wait for completion (`202 Accepted` alone is not confirmation). Verify the region is online in **Replicate data globally**. The running app reports recovery only after a successful point read contacts the original region alone. If you restarted the app, choose **Multi-Master Failover > R** to verify recovery without offlining anything. If the operation fails or the region remains offline, retain the operation details and contact Azure Support rather than starting another drill.
 
 ## Initializing the Demos
 
