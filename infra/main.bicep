@@ -147,6 +147,18 @@ resource uaIdentityResource 'Microsoft.ManagedIdentity/userAssignedIdentities@20
   location: 'westus2'
 }
 
+resource managedIdentityDataContributors 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-09-01-preview' = [
+  for (account, i) in accounts: {
+    parent: databaseAccounts[i]
+    name: guid(databaseAccounts[i].id, uaIdentityResource.id, '00000000-0000-0000-0000-000000000002')
+    properties: {
+      roleDefinitionId: '${databaseAccounts[i].id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002'
+      principalId: uaIdentityResource.properties.principalId
+      scope: databaseAccounts[i].id
+    }
+  }
+]
+
 resource databaseAccounts 'Microsoft.DocumentDB/databaseAccounts@2024-11-15' = [
   for account in accounts: {
     name: account.name
