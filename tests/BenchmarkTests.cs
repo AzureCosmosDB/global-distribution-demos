@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CosmosGlobalDistDemosCore;
@@ -10,6 +11,7 @@ using Xunit;
 
 public class BenchmarkTests
 {
+    private static readonly string[] Sample = Enumerable.Range(1, 100).Select(i => i.ToString()).ToArray();
     private readonly Mock<Container> container = new(MockBehavior.Strict);
     private readonly Benchmark benchmark;
 
@@ -21,14 +23,38 @@ public class BenchmarkTests
     [Fact]
     public async Task ExistingDataIsReusedWithoutExecutingAProcedure()
     {
+        Queries().Returns(Page(Sample));
+        Assert.Equal(Sample, await Benchmark.GetOrSeedIds(benchmark));
+    }
+
+    [Fact]
+    public async Task PartialExistingSampleWaitsWithoutReseeding()
+    {
+        Queries().Returns(Page(Sample[..3])).Returns(Page(Sample[..99].Append(Sample[0]).ToArray())).Returns(Page(Sample));
+        Assert.Equal(Sample, await Benchmark.GetOrSeedIds(benchmark));
+    }
+
+    [Fact]
+    public async Task IncompleteSampleTimesOutRatherThanStartingAShortBenchmark()
+    {
+        container.Setup(c => c.GetItemQueryIterator<string>(It.IsAny<QueryDefinition>(), null, It.IsAny<QueryRequestOptions>()))
+            .Returns(() => Page(Sample[..99]));
+        var error = await Assert.ThrowsAsync<TimeoutException>(() =>
+            Benchmark.GetOrSeedIds(benchmark, requiredCount: 100, visibilityTimeout: TimeSpan.FromMilliseconds(20)));
+        Assert.Contains("99 of 100", error.Message);
+    }
+
+    [Fact]
+    public async Task FailoverOnlyNeedsOneVisibleItem()
+    {
         Queries().Returns(Page("existing"));
-        Assert.Equal(new[] { "existing" }, await Benchmark.GetOrSeedIds(benchmark));
+        Assert.Equal("existing", Assert.Single(await Benchmark.GetOrSeedIds(benchmark, requiredCount: 1)));
     }
 
     [Fact]
     public async Task EmptyPartitionIsSeededInBatchesAndReadFromTheTargetRegion()
     {
-        Queries().Returns(Page()).Returns(Page()).Returns(Page("visible"));
+        Queries().Returns(Page()).Returns(Page()).Returns(Page(Sample[..3])).Returns(Page(Sample));
         var batches = new List<int>();
         BulkImport().Returns((string _, PartitionKey _, object[] args, StoredProcedureRequestOptions _, CancellationToken _) =>
         {
@@ -38,7 +64,7 @@ public class BenchmarkTests
             return Task.FromResult(Mock.Of<StoredProcedureExecuteResponse<int>>(r => r.Resource == 50));
         });
 
-        Assert.Equal(new[] { "visible" }, await Benchmark.GetOrSeedIds(benchmark));
+        Assert.Equal(Sample, await Benchmark.GetOrSeedIds(benchmark));
         Assert.Equal(new[] { 100, 50 }, batches);
     }
 

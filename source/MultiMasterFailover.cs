@@ -31,7 +31,7 @@ namespace CosmosGlobalDistDemosCore
             if (string.IsNullOrWhiteSpace(benchmark.targetRegion))
                 throw new InvalidOperationException("Set multiMasterReadRegion before starting the failover drill.");
             benchmark.client ??= Helpers.CreateClient(benchmark.endpoint, benchmark.targetRegion);
-            return (await Benchmark.GetOrSeedIds(benchmark))[0];
+            return (await Benchmark.GetOrSeedIds(benchmark, requiredCount: 1))[0];
         }
 
         public async Task Initialize()

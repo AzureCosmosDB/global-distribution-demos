@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Azure.Cosmos.Scripts;
@@ -16,6 +17,8 @@ namespace CosmosGlobalDistDemosCore
 
     public class Benchmark
     {
+        private const int ReadSampleSize = 100;
+
         public BenchmarkType benchmarkType;
         public string testName;
         public string testDescription;
@@ -47,7 +50,7 @@ namespace CosmosGlobalDistDemosCore
         private static async Task LoadData(Benchmark benchmark)
         {
             Console.WriteLine("Pre-loading data for benchmark...");
-            List<SampleCustomer> customers = SampleCustomer.GenerateCustomers(benchmark.partitionKeyValue, 100);
+            List<SampleCustomer> customers = SampleCustomer.GenerateCustomers(benchmark.partitionKeyValue, ReadSampleSize);
             int inserted = 0;
 
             while (inserted < customers.Count)
@@ -120,41 +123,50 @@ namespace CosmosGlobalDistDemosCore
 
             OutputResults(benchmark, results);
         }
-        public static async Task<List<string>> GetOrSeedIds(Benchmark benchmark)
+        public static Task<List<string>> GetOrSeedIds(Benchmark benchmark) => GetOrSeedIds(benchmark, ReadSampleSize);
+
+        internal static async Task<List<string>> GetOrSeedIds(Benchmark benchmark, int requiredCount, TimeSpan? visibilityTimeout = null)
         {
             benchmark.container ??= benchmark.client.GetContainer(benchmark.databaseId, benchmark.containerId);
-            List<string> ids = await GetIds(benchmark);
-            if (ids.Count > 0)
+            List<string> ids = await GetIds(benchmark, requiredCount);
+            if (ids.Count == requiredCount)
                 return ids;
 
-            await LoadData(benchmark);
-            // An eventual-consistency read region may not see the writes immediately.
-            Stopwatch elapsed = Stopwatch.StartNew();
-            do
+            if (ids.Count == 0)
+                await LoadData(benchmark);
+
+            using var timeout = new CancellationTokenSource(visibilityTimeout ?? TimeSpan.FromSeconds(30));
+            try
             {
-                ids = await GetIds(benchmark);
-                if (ids.Count > 0)
-                    return ids;
-                await Task.Delay(250);
-            } while (elapsed.Elapsed < TimeSpan.FromSeconds(30));
-            throw new TimeoutException($"BulkImport completed but no items are visible in {benchmark.targetRegion} for partition {benchmark.partitionKeyValue}.");
+                while (true)
+                {
+                    ids = await GetIds(benchmark, requiredCount, timeout.Token);
+                    if (ids.Count == requiredCount)
+                        return ids;
+                    await Task.Delay(250, timeout.Token);
+                }
+            }
+            catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+            {
+                throw new TimeoutException($"Only {ids.Count} of {requiredCount} required IDs were visible for partition {benchmark.partitionKeyValue} (preferred region: {benchmark.targetRegion}). The test did not start.");
+            }
         }
 
-        private static async Task<List<string>> GetIds(Benchmark benchmark)
+        private static async Task<List<string>> GetIds(Benchmark benchmark, int requiredCount, CancellationToken cancellationToken = default)
         {
-            List<string> results = new List<string>();
-            QueryDefinition query = new QueryDefinition("SELECT top 100 value c.id FROM c");
+            var results = new HashSet<string>();
+            QueryDefinition query = new QueryDefinition("SELECT TOP @count VALUE c.id FROM c").WithParameter("@count", requiredCount);
 
             using FeedIterator<string> resultSetIterator = benchmark.container.GetItemQueryIterator<string>(
                 query, requestOptions: new QueryRequestOptions() { PartitionKey = new PartitionKey(benchmark.partitionKeyValue) });
 
             while (resultSetIterator.HasMoreResults)
             {
-                FeedResponse<string> response = await resultSetIterator.ReadNextAsync();
-                results.AddRange(response);
+                FeedResponse<string> response = await resultSetIterator.ReadNextAsync(cancellationToken);
+                results.UnionWith(response);
             }
 
-            return results;
+            return results.ToList();
         }
         private static string GetBenchmarkType(Benchmark benchmark)
         {

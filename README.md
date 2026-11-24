@@ -88,7 +88,7 @@ Wait for completion (`202 Accepted` alone is not confirmation). Verify the regio
 
 ## Initializing the Demos
 
-After deployment, use **Initialize** to check access and seed empty read-benchmark partitions. Read and failover demos also seed on demand using the deployed `BulkImport` procedure. Existing data is reused.
+After deployment, use **Initialize** to check access and seed empty read-benchmark partitions. Read and failover demos also seed on demand using the deployed `BulkImport` procedure. Before timing reads, the latency benchmark queries the target partition until it sees 100 distinct IDs. If fewer than 100 are visible after 30 seconds of polling, it reports the count and skips the test rather than reporting a partial sample. A nonempty partition is not reseeded. The failover drill needs only one visible item.
 
 [!IMPORTANT]
 > The ten containers have 400 RU/s each, billed in each replicated region. Exiting the app does not stop charges. When finished, delete the dedicated demo resource group in Azure after checking its contents. The app's data-plane identity cannot delete infrastructure.
