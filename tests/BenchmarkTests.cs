@@ -52,6 +52,18 @@ public class BenchmarkTests
     }
 
     [Fact]
+    public async Task EmptyFailoverPartitionSeedsOnlyTheProbeItem()
+    {
+        Queries().Returns(Page()).Returns(Page("probe"));
+        BulkImport().Returns((string _, PartitionKey _, object[] args, StoredProcedureRequestOptions _, CancellationToken _) =>
+        {
+            Assert.Single(Assert.IsType<SampleCustomer[]>(Assert.Single(args)));
+            return Task.FromResult(Mock.Of<StoredProcedureExecuteResponse<int>>(r => r.Resource == 1));
+        });
+        Assert.Equal("probe", Assert.Single(await Benchmark.GetOrSeedIds(benchmark, requiredCount: 1)));
+    }
+
+    [Fact]
     public async Task EmptyPartitionIsSeededInBatchesAndReadFromTheTargetRegion()
     {
         Queries().Returns(Page()).Returns(Page()).Returns(Page(Sample[..3])).Returns(Page(Sample));

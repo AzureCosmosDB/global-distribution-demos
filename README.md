@@ -35,14 +35,13 @@ This drill observes SDK point reads while an operator takes a region offline on 
 
 ## Provisioning Cosmos DB accounts
 
-This solution requires seven different Cosmos DB accounts. Each of are configured differently to support the underlying test with 
-different replication modes, consistency levels and regions.
+This solution uses eight Cosmos DB accounts with different replication modes, consistency levels and regions.
 
 To deploy the Cosmos DB accounts for this solution, follow the steps below.
 
 ### Steps
 
-1. Click **Deploy to Azure**, or deploy `infra/main.bicep` using Azure CLI. Use a **dedicated resource group** and a globally unique `environmentName` prefix. The deployment creates seven accounts, their databases, containers, stored procedures and a user-assigned managed identity. Key authentication is disabled.
+1. Click **Deploy to Azure**, or deploy `infra/main.bicep` using Azure CLI. Use a **dedicated resource group** and a globally unique `environmentName` prefix. The deployment creates the accounts, their databases, containers, stored procedures and a user-assigned managed identity. Key authentication is disabled.
 2. Choose the identity that will run the demos. On an Azure VM, attach the deployed identity (output `managedIdentityResourceId`) to the VM and set `AZURE_CLIENT_ID` to the `managedIdentityClientId` output before starting Visual Studio. For local development, set the optional deployment parameter `developerPrincipalId` to your user's **object ID** (`az ad signed-in-user show --query id -o tsv`) and sign in as that user with Azure CLI or Visual Studio. The template grants Cosmos DB Built-in Data Contributor on each account; allow time for the assignments to propagate.
 3. In the deployment **Outputs**, find `endpoints`. Create `source/appSettings.local.json` as a JSON object using each `setting` as the property name and its full `endpoint` URI as the value. The demos use `DefaultAzureCredential`; no account keys are required.
 
@@ -67,7 +66,9 @@ SLA-based Cosmos DB latency metrics.
 
 ## Run and reset the failover drill
 
-Use only a dedicated demo account. **Offline region affects all clients and can lose writes that have not replicated.** Before starting, make sure the operator can perform both the offline and online operations on that account. These are control-plane permissions; do not grant them to the demo identity.
+Use the dedicated `<environmentName>-failover` account. It accepts writes in East US 2 and West US 2; the app reads from West US 2 by default and can switch to East US 2 during the drill. If upgrading an existing deployment, redeploy the template with the same parameters and copy the new `FailoverEndpoint` output entry to `source/appSettings.local.json`. Do not use `MultiMasterEndpoint`: that three-region account serves the latency and conflict-resolution demos.
+
+**Offline region affects all clients of the selected account and can lose writes that have not replicated.** Before starting, make sure the operator can perform both the offline and online operations on the failover account. These are control-plane permissions; do not grant them to the demo identity.
 
 1. Choose **Multi-Master Failover** in the app, then **F**. Note the account endpoint and preferred read region. Wait until the app observes a read from that region before changing anything.
 2. On that same account in the [Azure portal](https://learn.microsoft.com/azure/cosmos-db/how-to-manage-database-account#perform-forced-failover-for-your-azure-cosmos-db-account), open **Replicate data globally > Offline region**. Select the displayed region, review the warning, and confirm.
@@ -91,4 +92,4 @@ Wait for completion (`202 Accepted` alone is not confirmation). Verify the regio
 After deployment, use **Initialize** to check access and seed empty read-benchmark partitions. Read and failover demos also seed on demand using the deployed `BulkImport` procedure. Before timing reads, the latency benchmark queries the target partition until it sees 100 distinct IDs. If fewer than 100 are visible after 30 seconds of polling, it reports the count and skips the test rather than reporting a partial sample. A nonempty partition is not reseeded. The failover drill needs only one visible item.
 
 [!IMPORTANT]
-> The ten containers have 400 RU/s each, billed in each replicated region. Exiting the app does not stop charges. When finished, delete the dedicated demo resource group in Azure after checking its contents. The app's data-plane identity cannot delete infrastructure.
+> The eleven containers have 400 RU/s each, billed in each replicated region. This includes one container billed in both regions of the failover account. Exiting the app does not stop charges. When finished, delete the dedicated demo resource group in Azure after checking its contents. The app's data-plane identity cannot delete infrastructure.

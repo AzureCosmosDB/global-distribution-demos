@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.44.1.10279",
-      "templateHash": "10911989643427004887"
+      "templateHash": "11315529596827416261"
     }
   },
   "parameters": {
@@ -94,6 +94,16 @@
         "setting": "multiRegionEndpoint",
         "consistency": "Eventual",
         "multiWrite": false,
+        "regions": [
+          "East US 2",
+          "West US 2"
+        ]
+      },
+      {
+        "suffix": "failover",
+        "setting": "FailoverEndpoint",
+        "consistency": "Session",
+        "multiWrite": true,
         "regions": [
           "East US 2",
           "West US 2"

@@ -58,6 +58,13 @@ var accounts = [
     multiWrite: false
     regions: [ 'East US 2', 'West US 2' ]
   }
+  {
+    suffix: 'failover'
+    setting: 'FailoverEndpoint'
+    consistency: 'Session'
+    multiWrite: true
+    regions: [ 'East US 2', 'West US 2' ]
+  }
 ]
 
 resource databaseAccounts 'Microsoft.DocumentDB/databaseAccounts@2024-11-15' = [for account in accounts: {

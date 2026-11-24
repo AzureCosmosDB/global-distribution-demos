@@ -18,8 +18,8 @@ namespace CosmosGlobalDistDemosCore
             benchmark = new Benchmark
             {
                 benchmarkType = BenchmarkType.Read,
-                targetRegion = configuration["multiMasterReadRegion"],
-                endpoint = configuration["MultiMasterEndpoint"],
+                targetRegion = configuration["failoverReadRegion"],
+                endpoint = configuration["FailoverEndpoint"],
                 databaseId = configuration["databaseId"],
                 containerId = configuration["containerId"],
                 partitionKeyValue = configuration["partitionKeyValue"]
@@ -29,7 +29,9 @@ namespace CosmosGlobalDistDemosCore
         private async Task<string> GetSampleIdAsync()
         {
             if (string.IsNullOrWhiteSpace(benchmark.targetRegion))
-                throw new InvalidOperationException("Set multiMasterReadRegion before starting the failover drill.");
+                throw new InvalidOperationException("Set failoverReadRegion before starting the failover drill.");
+            if (!Uri.TryCreate(benchmark.endpoint, UriKind.Absolute, out var endpoint) || endpoint.Scheme != Uri.UriSchemeHttps)
+                throw new InvalidOperationException("Set FailoverEndpoint in appSettings.local.json to the dedicated failover account's HTTPS endpoint from the deployment outputs.");
             benchmark.client ??= Helpers.CreateClient(benchmark.endpoint, benchmark.targetRegion);
             return (await Benchmark.GetOrSeedIds(benchmark, requiredCount: 1))[0];
         }

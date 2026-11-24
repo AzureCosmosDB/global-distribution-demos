@@ -47,10 +47,10 @@ namespace CosmosGlobalDistDemosCore
             }
         }
 
-        private static async Task LoadData(Benchmark benchmark)
+        private static async Task LoadData(Benchmark benchmark, int count)
         {
             Console.WriteLine("Pre-loading data for benchmark...");
-            List<SampleCustomer> customers = SampleCustomer.GenerateCustomers(benchmark.partitionKeyValue, ReadSampleSize);
+            List<SampleCustomer> customers = SampleCustomer.GenerateCustomers(benchmark.partitionKeyValue, count);
             int inserted = 0;
 
             while (inserted < customers.Count)
@@ -133,7 +133,7 @@ namespace CosmosGlobalDistDemosCore
                 return ids;
 
             if (ids.Count == 0)
-                await LoadData(benchmark);
+                await LoadData(benchmark, requiredCount);
 
             using var timeout = new CancellationTokenSource(visibilityTimeout ?? TimeSpan.FromSeconds(30));
             try
