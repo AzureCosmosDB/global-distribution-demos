@@ -1,250 +1,338 @@
 {
-  "$schema": "http://schemas.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
   "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.44.1.10279",
+      "templateHash": "11315529596827416261"
+    }
+  },
   "parameters": {
-    "cosmosAccountPrefix": {
+    "environmentName": {
       "type": "string",
+      "minLength": 1,
+      "maxLength": 22,
       "metadata": {
-        "description": "7 Cosmos DB accounts will be provisioned, pick a random prefix to use for their names."
+        "description": "Globally unique account name prefix (letters, digits and hyphens)."
+      }
+    },
+    "developerPrincipalId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional Entra object ID for a local developer, in addition to the demo VM identity."
       }
     }
   },
   "variables": {
-    "singleRegionEndpoint": "[toLower(concat(parameters('cosmosAccountPrefix'), '-read-single-region'))]",
-    "multiRegionEndpoint": "[toLower(concat(parameters('cosmosAccountPrefix'), '-read-multi-region'))]",
-    "eventualEndpoint": "[toLower(concat(parameters('cosmosAccountPrefix'), '-eventual-1kmiles'))]",
-    "strong1kMilesEndpoint": "[toLower(concat(parameters('cosmosAccountPrefix'), '-strong-1kmiles'))]",
-    "strong2kMilesEndpoint": "[toLower(concat(parameters('cosmosAccountPrefix'), '-strong-2kmiles'))]",
-    "singleMasterEndpoint": "[toLower(concat(parameters('cosmosAccountPrefix'), '-write-single-master'))]",
-    "multiMasterEndpoint": "[toLower(concat(parameters('cosmosAccountPrefix'), '-write-multi-master'))]"
+    "$fxv#0": "function bulkUpload(docs)\r\n{\r\n    var collection = getContext().getCollection();\r\n    var collectionLink = collection.getSelfLink();\r\n    var count = 0;\r\n\r\n    if (!docs) throw new Error(\"The array is undefined or null.\");\r\n\r\n    var docsLength = docs.length;\r\n\r\n    if (docsLength == 0) {\r\n        getContext().getResponse().setBody(0);\r\n        return;\r\n    }\r\n\r\n    tryCreate(docs[count], callback);\r\n\r\n    function tryCreate(doc, callback) {\r\n        var options = { disableAutomaticIdGeneration: true };\r\n\r\n        var isAccepted = collection.createDocument(collectionLink, doc, options, callback);\r\n\r\n        if (!isAccepted) getContext().getResponse().setBody(count);\r\n    }\r\n\r\n    function callback(err, doc, options) {\r\n        if (err) throw err;\r\n        count++;\r\n        if (count >= docsLength) {\r\n            getContext().getResponse().setBody(count);\r\n        } else {\r\n            tryCreate(docs[count], callback);\r\n        }\r\n    }\r\n}",
+    "$fxv#1": "function resolver(incomingRecord, existingRecord, isTombstone, conflictingRecords) {\r\n    var collection = getContext().getCollection();\r\n\r\n    if (!incomingRecord) {\r\n        if (existingRecord) {\r\n\r\n            collection.deleteDocument(existingRecord._self, {}, function (err, responseOptions) {\r\n                if (err) throw err;\r\n            });\r\n        }\r\n    } else if (isTombstone) {\r\n        // delete always wins.\r\n    } else {\r\n        if (existingRecord) {\r\n            if (incomingRecord.userDefinedId > existingRecord.userDefinedId) {\r\n                return; // existing record wins\r\n            }\r\n        }\r\n\r\n        var i;\r\n        for (i = 0; i < conflictingRecords.length; i++) {\r\n            if (incomingRecord.userDefinedId > conflictingRecords[i].userDefinedId) {\r\n                return; // existing conflict record wins\r\n            }\r\n        }\r\n\r\n        // incoming record wins - clear conflicts and replace existing with incoming.\r\n        tryDelete(conflictingRecords, incomingRecord, existingRecord);\r\n    }\r\n\r\n    function tryDelete(documents, incoming, existing) {\r\n        if (documents.length > 0) {\r\n            collection.deleteDocument(documents[0]._self, {}, function (err, responseOptions) {\r\n                if (err) throw err;\r\n\r\n                documents.shift();\r\n                tryDelete(documents, incoming, existing);\r\n            });\r\n        } else if (existing) {\r\n            collection.replaceDocument(existing._self, incoming,\r\n                function (err, documentCreated) {\r\n                    if (err) throw err;\r\n                });\r\n        } else {\r\n            collection.createDocument(collection.getSelfLink(), incoming,\r\n                function (err, documentCreated) {\r\n                    if (err) throw err;\r\n                });\r\n        }\r\n    }\r\n}",
+    "accounts": [
+      {
+        "suffix": "single-master",
+        "setting": "SingleMasterEndpoint",
+        "consistency": "Session",
+        "multiWrite": false,
+        "regions": [
+          "East US 2",
+          "West US 2"
+        ]
+      },
+      {
+        "suffix": "multi-master",
+        "setting": "MultiMasterEndpoint",
+        "consistency": "Session",
+        "multiWrite": true,
+        "regions": [
+          "West US 2",
+          "East US 2",
+          "North Europe"
+        ]
+      },
+      {
+        "suffix": "consistency-eventual",
+        "setting": "EventualEndpoint",
+        "consistency": "Eventual",
+        "multiWrite": true,
+        "regions": [
+          "West US 2",
+          "Central US"
+        ]
+      },
+      {
+        "suffix": "consistency-strong",
+        "setting": "Strong1kMilesEndpoint",
+        "consistency": "Strong",
+        "multiWrite": false,
+        "regions": [
+          "West US 2",
+          "Central US"
+        ]
+      },
+      {
+        "suffix": "consistency-strong2",
+        "setting": "Strong2kMilesEndpoint",
+        "consistency": "Strong",
+        "multiWrite": false,
+        "regions": [
+          "West US 2",
+          "East US 2"
+        ]
+      },
+      {
+        "suffix": "latency-single-region",
+        "setting": "singleRegionEndpoint",
+        "consistency": "Eventual",
+        "multiWrite": false,
+        "regions": [
+          "East US 2"
+        ]
+      },
+      {
+        "suffix": "latency-multi-region",
+        "setting": "multiRegionEndpoint",
+        "consistency": "Eventual",
+        "multiWrite": false,
+        "regions": [
+          "East US 2",
+          "West US 2"
+        ]
+      },
+      {
+        "suffix": "failover",
+        "setting": "FailoverEndpoint",
+        "consistency": "Session",
+        "multiWrite": true,
+        "regions": [
+          "East US 2",
+          "West US 2"
+        ]
+      }
+    ],
+    "dataContributorRole": "00000000-0000-0000-0000-000000000002",
+    "partitionKey": {
+      "paths": [
+        "/myPartitionKey"
+      ],
+      "kind": "Hash"
+    },
+    "throughput": {
+      "throughput": 400
+    },
+    "multiMasterIndex": "[indexOf(map(variables('accounts'), lambda('account', lambdaVariables('account').suffix)), 'multi-master')]",
+    "mergeContainer": "customersUdp",
+    "conflictContainers": [
+      {
+        "name": "customersLww",
+        "policy": {
+          "mode": "LastWriterWins",
+          "conflictResolutionPath": "/userDefinedId"
+        }
+      },
+      {
+        "name": "[variables('mergeContainer')]",
+        "policy": {
+          "mode": "Custom",
+          "conflictResolutionProcedure": "[format('dbs/demo/colls/{0}/sprocs/MergeProcedure', variables('mergeContainer'))]"
+        }
+      },
+      {
+        "name": "customersNone",
+        "policy": {
+          "mode": "Custom"
+        }
+      }
+    ]
   },
   "resources": [
     {
-      "apiVersion": "2021-01-15",
+      "copy": {
+        "name": "databaseAccounts",
+        "count": "[length(variables('accounts'))]"
+      },
       "type": "Microsoft.DocumentDB/databaseAccounts",
-      "kind": "GlobalDocumentDB",
-      "name": "[variables('singleRegionEndpoint')]",
+      "apiVersion": "2024-11-15",
+      "name": "[toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[copyIndex()].suffix))]",
       "location": "West US 2",
+      "kind": "GlobalDocumentDB",
       "properties": {
-        "name": "[variables('singleRegionEndpoint')]",
-        "databaseAccountOfferType": "Standard",
-        "consistencyPolicy": {
-          "defaultConsistencyLevel": "Eventual"
-        },
-        "locations": [
+        "copy": [
           {
-            "locationName": "East US 2",
-            "failoverPriority": 0
+            "name": "locations",
+            "count": "[length(variables('accounts')[copyIndex()].regions)]",
+            "input": {
+              "locationName": "[variables('accounts')[copyIndex()].regions[copyIndex('locations')]]",
+              "failoverPriority": "[copyIndex('locations')]",
+              "isZoneRedundant": false
+            }
           }
-        ]
+        ],
+        "publicNetworkAccess": "Enabled",
+        "enableMultipleWriteLocations": "[variables('accounts')[copyIndex()].multiWrite]",
+        "databaseAccountOfferType": "Standard",
+        "disableLocalAuth": true,
+        "enablePerRegionPerPartitionAutoscale": true,
+        "consistencyPolicy": {
+          "defaultConsistencyLevel": "[variables('accounts')[copyIndex()].consistency]"
+        }
       }
     },
     {
-      "apiVersion": "2021-01-15",
-      "type": "Microsoft.DocumentDB/databaseAccounts",
-      "kind": "GlobalDocumentDB",
-      "name": "[variables('multiRegionEndpoint')]",
-      "location": "West US 2",
-      "properties": {
-        "name": "[variables('multiRegionEndpoint')]",
-        "databaseAccountOfferType": "Standard",
-        "consistencyPolicy": {
-          "defaultConsistencyLevel": "Eventual"
-        },
-        "locations": [
-          {
-            "locationName": "East US 2",
-            "failoverPriority": 0
-          },
-          {
-            "locationName": "West US 2",
-            "failoverPriority": 1
-          }
-        ]
-      }
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-01-31",
+      "name": "[toLower(format('{0}-mi', parameters('environmentName')))]",
+      "location": "West US 2"
     },
     {
-      "apiVersion": "2021-01-15",
-      "type": "Microsoft.DocumentDB/databaseAccounts",
-      "kind": "GlobalDocumentDB",
-      "name": "[variables('eventualEndpoint')]",
-      "location": "West US 2",
+      "copy": {
+        "name": "managedIdentityDataContributors",
+        "count": "[length(variables('accounts'))]"
+      },
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments",
+      "apiVersion": "2024-11-15",
+      "name": "[format('{0}/{1}', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[copyIndex()].suffix)), guid(resourceId('Microsoft.DocumentDB/databaseAccounts', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[copyIndex()].suffix))), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', toLower(format('{0}-mi', parameters('environmentName')))), variables('dataContributorRole')))]",
       "properties": {
-        "name": "[variables('eventualEndpoint')]",
-        "databaseAccountOfferType": "Standard",
-        "consistencyPolicy": {
-          "defaultConsistencyLevel": "Eventual"
-        },
-        "locations": [
-          {
-            "locationName": "West US 2",
-            "failoverPriority": 0
-          },
-          {
-            "locationName": "Central US",
-            "failoverPriority": 1
-          }
-        ]
-      }
+        "roleDefinitionId": "[format('{0}/sqlRoleDefinitions/{1}', resourceId('Microsoft.DocumentDB/databaseAccounts', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[copyIndex()].suffix))), variables('dataContributorRole'))]",
+        "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', toLower(format('{0}-mi', parameters('environmentName')))), '2023-01-31').principalId]",
+        "scope": "[resourceId('Microsoft.DocumentDB/databaseAccounts', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[copyIndex()].suffix)))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[copyIndex()].suffix)))]",
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[copyIndex()].suffix)))]",
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[copyIndex()].suffix)))]",
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[copyIndex()].suffix)))]",
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', toLower(format('{0}-mi', parameters('environmentName'))))]"
+      ]
     },
     {
-      "apiVersion": "2021-01-15",
-      "type": "Microsoft.DocumentDB/databaseAccounts",
-      "kind": "GlobalDocumentDB",
-      "name": "[variables('strong1kMilesEndpoint')]",
-      "location": "West US 2",
+      "copy": {
+        "name": "developerDataContributors",
+        "count": "[length(variables('accounts'))]"
+      },
+      "condition": "[not(empty(parameters('developerPrincipalId')))]",
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments",
+      "apiVersion": "2024-11-15",
+      "name": "[format('{0}/{1}', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[copyIndex()].suffix)), guid(resourceId('Microsoft.DocumentDB/databaseAccounts', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[copyIndex()].suffix))), parameters('developerPrincipalId'), variables('dataContributorRole')))]",
       "properties": {
-        "name": "[variables('strong1kMilesEndpoint')]",
-        "databaseAccountOfferType": "Standard",
-        "consistencyPolicy": {
-          "defaultConsistencyLevel": "Strong"
-        },
-        "locations": [
-          {
-            "locationName": "West US 2",
-            "failoverPriority": 0
-          },
-          {
-            "locationName": "Central US",
-            "failoverPriority": 1
-          }
-        ]
-      }
+        "roleDefinitionId": "[format('{0}/sqlRoleDefinitions/{1}', resourceId('Microsoft.DocumentDB/databaseAccounts', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[copyIndex()].suffix))), variables('dataContributorRole'))]",
+        "principalId": "[parameters('developerPrincipalId')]",
+        "scope": "[resourceId('Microsoft.DocumentDB/databaseAccounts', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[copyIndex()].suffix)))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[copyIndex()].suffix)))]",
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[copyIndex()].suffix)))]",
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[copyIndex()].suffix)))]",
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[copyIndex()].suffix)))]"
+      ]
     },
     {
-      "apiVersion": "2021-01-15",
-      "type": "Microsoft.DocumentDB/databaseAccounts",
-      "kind": "GlobalDocumentDB",
-      "name": "[variables('strong2kMilesEndpoint')]",
-      "location": "West US 2",
+      "copy": {
+        "name": "databases",
+        "count": "[length(variables('accounts'))]"
+      },
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
+      "apiVersion": "2024-11-15",
+      "name": "[format('{0}/{1}', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[copyIndex()].suffix)), 'demo')]",
       "properties": {
-        "name": "[variables('strong2kMilesEndpoint')]",
-        "databaseAccountOfferType": "Standard",
-        "consistencyPolicy": {
-          "defaultConsistencyLevel": "Strong"
-        },
-        "locations": [
-          {
-            "locationName": "West US 2",
-            "failoverPriority": 0
-          },
-          {
-            "locationName": "East US 2",
-            "failoverPriority": 1
-          }
-        ]
-      }
+        "resource": {
+          "id": "demo"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[copyIndex()].suffix)))]"
+      ]
     },
     {
-      "apiVersion": "2021-01-15",
-      "type": "Microsoft.DocumentDB/databaseAccounts",
-      "kind": "GlobalDocumentDB",
-      "name": "[variables('singleMasterEndpoint')]",
-      "location": "West US 2",
+      "copy": {
+        "name": "customers",
+        "count": "[length(variables('accounts'))]"
+      },
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+      "apiVersion": "2024-11-15",
+      "name": "[format('{0}/{1}/{2}', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[copyIndex()].suffix)), 'demo', 'customers')]",
       "properties": {
-        "name": "[variables('singleMasterEndpoint')]",
-        "databaseAccountOfferType": "Standard",
-        "consistencyPolicy": {
-          "defaultConsistencyLevel": "Eventual"
+        "resource": {
+          "id": "customers",
+          "partitionKey": "[variables('partitionKey')]"
         },
-        "locations": [
-          {
-            "locationName": "East US 2",
-            "failoverPriority": 0
-          },
-          {
-            "locationName": "West US 2",
-            "failoverPriority": 1
-          }
-        ]
-      }
+        "options": "[variables('throughput')]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[copyIndex()].suffix)), 'demo')]"
+      ]
     },
     {
-      "apiVersion": "2021-01-15",
-      "type": "Microsoft.DocumentDB/databaseAccounts",
-      "kind": "GlobalDocumentDB",
-      "name": "[variables('multiMasterEndpoint')]",
-      "location": "West US 2",
+      "copy": {
+        "name": "bulkImports",
+        "count": "[length(variables('accounts'))]"
+      },
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/storedProcedures",
+      "apiVersion": "2024-11-15",
+      "name": "[format('{0}/{1}/{2}/{3}', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[copyIndex()].suffix)), 'demo', 'customers', 'BulkImport')]",
       "properties": {
-        "name": "[variables('multiMasterEndpoint')]",
-        "databaseAccountOfferType": "Standard",
-        "consistencyPolicy": {
-          "defaultConsistencyLevel": "Eventual"
+        "resource": {
+          "id": "BulkImport",
+          "body": "[variables('$fxv#0')]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[copyIndex()].suffix)), 'demo', 'customers')]"
+      ]
+    },
+    {
+      "copy": {
+        "name": "conflicts",
+        "count": "[length(variables('conflictContainers'))]"
+      },
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+      "apiVersion": "2024-11-15",
+      "name": "[format('{0}/{1}/{2}', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[variables('multiMasterIndex')].suffix)), 'demo', variables('conflictContainers')[copyIndex()].name)]",
+      "properties": {
+        "resource": {
+          "id": "[variables('conflictContainers')[copyIndex()].name]",
+          "partitionKey": "[variables('partitionKey')]",
+          "conflictResolutionPolicy": "[variables('conflictContainers')[copyIndex()].policy]"
         },
-        "enableMultipleWriteLocations": true,
-        "locations": [
-          {
-            "locationName": "East US 2",
-            "failoverPriority": 0
-          },
-          {
-            "locationName": "West US 2",
-            "failoverPriority": 1
-          },
-          {
-            "locationName": "North Europe",
-            "failoverPriority": 2
-          }
-        ]
-      }
+        "options": "[variables('throughput')]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[variables('multiMasterIndex')].suffix)), 'demo')]"
+      ]
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/storedProcedures",
+      "apiVersion": "2024-11-15",
+      "name": "[format('{0}/{1}/{2}/{3}', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[variables('multiMasterIndex')].suffix)), 'demo', variables('conflictContainers')[indexOf(map(variables('conflictContainers'), lambda('container', lambdaVariables('container').name)), variables('mergeContainer'))].name, 'MergeProcedure')]",
+      "properties": {
+        "resource": {
+          "id": "MergeProcedure",
+          "body": "[variables('$fxv#1')]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[variables('multiMasterIndex')].suffix)), 'demo', variables('conflictContainers')[indexOf(map(variables('conflictContainers'), lambda('container', lambdaVariables('container').name)), variables('mergeContainer'))].name)]"
+      ]
     }
   ],
   "outputs": {
-    "SingleRegionEndpoint": {
+    "managedIdentityResourceId": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('singleRegionEndpoint')), '2021-01-15').documentEndpoint]"
+      "value": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', toLower(format('{0}-mi', parameters('environmentName'))))]"
     },
-    "SingleRegionKey": {
+    "managedIdentityClientId": {
       "type": "string",
-      "value": "[listkeys(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('singleRegionEndpoint')), '2021-01-15').primaryMasterKey]"
+      "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', toLower(format('{0}-mi', parameters('environmentName')))), '2023-01-31').clientId]"
     },
-    "MultiRegionEndpoint": {
-      "type": "string",
-      "value": "[reference(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('multiRegionEndpoint')), '2021-01-15').documentEndpoint]"
-    },
-    "MultiRegionKey": {
-      "type": "string",
-      "value": "[listkeys(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('multiRegionEndpoint')), '2021-01-15').primaryMasterKey]"
-    },
-    "EventualEndpoint": {
-      "type": "string",
-      "value": "[reference(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('eventualEndpoint')), '2021-01-15').documentEndpoint]"
-    },
-    "EventualKey": {
-      "type": "string",
-      "value": "[listkeys(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('eventualEndpoint')), '2021-01-15').primaryMasterKey]"
-    },
-    "Strong1kMilesEndpoint": {
-      "type": "string",
-      "value": "[reference(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('strong1kMilesEndpoint')), '2021-01-15').documentEndpoint]"
-    },
-    "Strong1kMilesKey": {
-      "type": "string",
-      "value": "[listkeys(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('strong1kMilesEndpoint')), '2021-01-15').primaryMasterKey]"
-    },
-    "Strong2kMilesEndpoint": {
-      "type": "string",
-      "value": "[reference(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('strong2kMilesEndpoint')), '2021-01-15').documentEndpoint]"
-    },
-    "Strong2kMilesKey": {
-      "type": "string",
-      "value": "[listkeys(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('strong2kMilesEndpoint')), '2021-01-15').primaryMasterKey]"
-    },
-    "SingleMasterEndpoint": {
-      "type": "string",
-      "value": "[reference(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('singleMasterEndpoint')), '2021-01-15').documentEndpoint]"
-    },
-    "SingleMasterKey": {
-      "type": "string",
-      "value": "[listkeys(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('singleMasterEndpoint')), '2021-01-15').primaryMasterKey]"
-    },
-    "MultiMasterEndpoint": {
-      "type": "string",
-      "value": "[reference(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('multiMasterEndpoint')), '2021-01-15').documentEndpoint]"
-    },
-    "MultiMasterKey": {
-      "type": "string",
-      "value": "[listkeys(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('multiMasterEndpoint')), '2021-01-15').primaryMasterKey]"
+    "endpoints": {
+      "type": "array",
+      "copy": {
+        "count": "[length(variables('accounts'))]",
+        "input": {
+          "setting": "[variables('accounts')[copyIndex()].setting]",
+          "endpoint": "[reference(resourceId('Microsoft.DocumentDB/databaseAccounts', toLower(format('{0}-{1}', parameters('environmentName'), variables('accounts')[copyIndex()].suffix))), '2024-11-15').documentEndpoint]"
+        }
+      }
     }
   }
 }

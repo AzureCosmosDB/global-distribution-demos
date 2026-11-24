@@ -2,62 +2,38 @@
 using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace CosmosGlobalDistDemosCore
 {
-    /*
-     * Resources needed for this demo:
-     * 
-     *   Multi-Master Failover => Cosmos DB account: Replication: Multi-Master, Read/Write Region: East US 2, West US 2, North Europe, Consistency: Eventual
-     *   
-    */
     class MultiMasterFailover
     {
-        //Benchmarks to run
-        private static List<Benchmark> benchmarks = null;
+        private readonly Benchmark benchmark;
 
         public MultiMasterFailover(IConfiguration configuration)
         {
-            try
+            benchmark = new Benchmark
             {
-                Console.WriteLine($"Starting Multi-Master Failover");
+                benchmarkType = BenchmarkType.Read,
+                targetRegion = configuration["failoverReadRegion"],
+                endpoint = configuration["FailoverEndpoint"],
+                databaseId = configuration["databaseId"],
+                containerId = configuration["containerId"],
+                partitionKeyValue = configuration["partitionKeyValue"]
+            };
+        }
 
-                //Define new Benchmarks
-                benchmarks = new List<Benchmark>
-                {
-                    new Benchmark
-                    {
-                        benchmarkType = BenchmarkType.Read,
-                        testName = "Multi Master Failover",
-                        testDescription = $"Test Reads against Multi-Master account with failover from West US 2 to East US 2",
-                        testRegion = configuration["testRegion"],
-                        targetRegion = configuration["multiMasterReadRegion"],
-                        endpoint = configuration["MultiMasterEndpoint"],
-                        key = configuration["MultiMasterKey"],
-                        writeRegion = configuration["multiMasterWriteRegion"],
-                        readRegion = configuration["multiMasterReadRegion"],
-                        databaseId = configuration["databaseId"],
-                        containerId = configuration["containerId"],
-                        partitionKeyPath = configuration["partitionKeyPath"],
-                        partitionKeyValue = configuration["partitionKeyValue"]
-                    }
-                };
-
-                foreach (Benchmark benchmark in benchmarks)
-                {
-                    benchmark.client = new CosmosClient(
-                        benchmark.endpoint, 
-                        benchmark.key, 
-                        new CosmosClientOptions { ApplicationRegion = "East US 2" });
-                }
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.Message + "\nPress any key to continue");
-                Console.ReadKey();
-            }
+        private async Task<string> GetSampleIdAsync()
+        {
+            if (string.IsNullOrWhiteSpace(benchmark.targetRegion))
+                throw new InvalidOperationException("Set failoverReadRegion before starting the failover drill.");
+            if (!Uri.TryCreate(benchmark.endpoint, UriKind.Absolute, out var endpoint) || endpoint.Scheme != Uri.UriSchemeHttps)
+                throw new InvalidOperationException("Set FailoverEndpoint in appSettings.local.json to the dedicated failover account's HTTPS endpoint from the deployment outputs.");
+            benchmark.client ??= Helpers.CreateClient(benchmark.endpoint, benchmark.targetRegion);
+            return (await Benchmark.GetOrSeedIds(benchmark, requiredCount: 1))[0];
         }
 
         public async Task Initialize()
@@ -66,10 +42,7 @@ namespace CosmosGlobalDistDemosCore
             {
                 Console.WriteLine("Multi Master Failover Initialize");
 
-                foreach (Benchmark benchmark in benchmarks)
-                {
-                    await Benchmark.InitializeBenchmark(benchmark);
-                }
+                await GetSampleIdAsync();
             }
             catch (Exception e)
             {
@@ -79,72 +52,81 @@ namespace CosmosGlobalDistDemosCore
         }
         public async Task RunBenchmarks()
         {
+            string original = benchmark.targetRegion;
+            Console.WriteLine($"Demo account: {benchmark.endpoint}\nPreferred read region: {original}");
+            Console.WriteLine("Use only a dedicated demo account. Taking a region offline affects all clients and can lose unreplicated writes.");
+            Console.WriteLine("Reset: use the README's 'Bring the region back online' command for this account and region, even if monitoring stops.");
+            Console.WriteLine("[F] Observe failover and recovery  [R] Verify recovery only  [Any other key] Return");
+            var choice = Console.ReadKey(true).Key;
+            if (choice != ConsoleKey.F && choice != ConsoleKey.R)
+                return;
+
             try
             {
-                Console.WriteLine($"Test reads from Multi-Master account during failover\n{Helpers.Line}\nPlease Wait...");
-
-                //Run benchmarks, collect results
-                Benchmark benchmark = benchmarks[0];
-
-                //Verify the benchmark is setup
-                await Benchmark.InitializeBenchmark(benchmark);
-
-                List<string> ids = await Benchmark.GetIds(benchmark);
-                string id = ids[0];
-
-                bool exit = false;
-                int seconds = 0;
-
-                string initialRegion = "";
-                string failoverRegion;
-
-                ItemResponse<SampleCustomer> response = await benchmark.container.ReadItemAsync<SampleCustomer>(id: id, partitionKey: new PartitionKey(benchmark.partitionKeyValue));
-                initialRegion = Helpers.ParseRegionFromDiag(response.Diagnostics.ToString());
-                failoverRegion = initialRegion;
-
-                string regionalEndpoint = Helpers.ParseEndpointFromDiag(response.Diagnostics.ToString());
-                string ipAddress = Dns.GetHostAddresses(regionalEndpoint)[0].ToString();
-
-                Console.WriteLine($"Initiate Reads from {initialRegion}");
-
-                Console.WriteLine($"Simulating regional failure by creating a Firewall Rule blocking the ip address for {initialRegion}");
-                Firewall.AddFirewallRule("Failover Test", ipAddress);
-
-                while (!exit)
+                string id = await GetSampleIdAsync();
+                if (choice == ConsoleKey.F)
                 {
-                    
-                    response = await benchmark.container.ReadItemAsync<SampleCustomer>(id: id, partitionKey: new PartitionKey(benchmark.partitionKeyValue));
-                    failoverRegion = Helpers.ParseRegionFromDiag(response.Diagnostics.ToString());
-                    Console.WriteLine($"Read Region: {failoverRegion}, IpAddress: {ipAddress}");
-
-                    //We need to do a create operation to force the diagnostic strings to flip in the SDK client
-                    await benchmark.client.CreateDatabaseIfNotExistsAsync("newDB");
-
-                    if (failoverRegion != initialRegion)
-                    {
-                        Console.WriteLine($"Region failover has occurred. Complete in {seconds} seconds\nPress any key to continue\n...");
-                        Console.ReadKey(true);
-                        Firewall.RemoveFirewallRule("Failover Test");
-                        exit = true;
-                    }
-
-                    await Task.Delay(1000);
-                    seconds++;
-
+                    Console.WriteLine($"Checking that reads are served by {original} before the drill.");
+                    await WaitForReadAsync(id, inPreferredRegion: true);
+                    Console.WriteLine($"In the demo account's Azure portal, select Replicate data globally > Offline region > {original}.");
+                    string alternate = await WaitForReadAsync(id, inPreferredRegion: false);
+                    Console.WriteLine($"Failover observed: a point read was served by {alternate}.");
                 }
+
+                Console.WriteLine($"Run the README's 'Bring the region back online' command for {original} if you haven't already.");
+                await WaitForReadAsync(id, inPreferredRegion: true);
+                Console.WriteLine($"Recovery verified: a point read was served by {original}.");
             }
             catch (Exception e)
             {
-                Console.WriteLine(e.Message + "\nPress any key to continue");
-                Console.ReadKey();
+                Console.WriteLine(e.Message);
             }
+            Console.WriteLine("Monitoring does not change region status. Press any key to return.");
+            Console.ReadKey(true);
         }
 
-
-
-        public async Task CleanUp()
+        internal static string MatchReadRegion(IReadOnlyList<string> regions, string preferredRegion, bool inPreferredRegion)
         {
-            await Benchmark.CleanUp(benchmarks);
+            // Diagnostics do not order retries. Only a single-region read identifies the serving region.
+            if (regions.Count != 1 || string.IsNullOrWhiteSpace(regions[0]))
+                return null;
+            string region = regions[0];
+            bool preferred = string.Equals(region.Replace(" ", ""), preferredRegion.Replace(" ", ""), StringComparison.OrdinalIgnoreCase);
+            return preferred == inPreferredRegion ? region : null;
+        }
+
+        private async Task<string> WaitForReadAsync(string id, bool inPreferredRegion)
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+            Console.WriteLine("Watching reads for up to 10 minutes. Press Escape to stop monitoring.");
+            try
+            {
+                while (true)
+                {
+                    if (!Console.IsInputRedirected && Console.KeyAvailable && Console.ReadKey(true).Key == ConsoleKey.Escape)
+                        throw new OperationCanceledException("Monitoring stopped by operator.");
+                    try
+                    {
+                        var read = await benchmark.container.ReadItemAsync<SampleCustomer>(id, new PartitionKey(benchmark.partitionKeyValue),
+                            cancellationToken: timeout.Token);
+                        var regions = read.Diagnostics.GetContactedRegions().Select(c => c.regionName).ToArray();
+                        Console.WriteLine($"Successful read; regions contacted: {string.Join(", ", regions)}");
+                        string match = MatchReadRegion(regions, benchmark.targetRegion, inPreferredRegion);
+                        if (match != null)
+                            return match;
+                    }
+
+                    catch (CosmosException e) when (e.StatusCode == HttpStatusCode.ServiceUnavailable || e.StatusCode == HttpStatusCode.RequestTimeout || e.StatusCode == HttpStatusCode.TooManyRequests)
+                    {
+                        Console.WriteLine($"Read returned {(int)e.StatusCode}; waiting for a successful read.");
+                    }
+                    await Task.Delay(1000, timeout.Token);
+                }
+            }
+            catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+            {
+                throw new TimeoutException("No matching read observed within 10 minutes. Check region status in the portal; use recovery-only mode to resume.");
+            }
         }
     }
 }

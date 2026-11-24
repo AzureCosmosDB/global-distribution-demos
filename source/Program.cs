@@ -15,23 +15,9 @@ namespace CosmosGlobalDistDemosCore
 
         public static async Task Main(string[] args)
         {
-            /*
-            * Resources needed for this demo:
-            * 
-            * Demo is designed to run from a VM in West US 2
-            * 
-            * Windows VM, West US 2, Standard B4 (4 core, 16GB), RDP enabled. This solution gets run from the VM.
-            * 
-            * Each class has instructions on Cosmos accounts to provision
-            * Fill endpoints and keys from all provisioned Cosmos DB accounts in app.config, do not modify anything else.
-            * 
-            * Run the Initialize before executing any of the demos to provision database and container resources
-            * Run clean up to remove databaser and containers. Use portal to delete accounts.
-           */
-
-            
             IConfiguration configuration = new ConfigurationBuilder()
-                .AddJsonFile("appSettings.json")
+                .AddJsonFile("AppSettings.json")
+                .AddJsonFile("appSettings.local.json", optional: true)
                 .Build();
 
             singleMultiRegion = new SingleMultiRegion(configuration);
@@ -60,7 +46,7 @@ namespace CosmosGlobalDistDemosCore
                 Console.WriteLine($"[4]   Multi-Master Conflict Resolution");
                 Console.WriteLine($"[5]   Multi-Master Failover");
                 Console.WriteLine($"[6]   Initialize");
-                Console.WriteLine($"[7]   Clean up");
+                Console.WriteLine($"[7]   How to clean up Azure resources");
                 Console.WriteLine($"[8]   Exit");
 
                 ConsoleKeyInfo result = Console.ReadKey(true);
@@ -101,12 +87,8 @@ namespace CosmosGlobalDistDemosCore
                 }
                 else if (result.KeyChar == '7')
                 {
-                    Console.WriteLine("Running Clean up Routines");
-                    await singleMultiRegion.CleanUp();
-                    await singleMultiMaster.CleanUp();
-                    await consistencyLatency.CleanUp();
-                    await conflictResolution.CleanUp();
-                    await multiMasterFailover.CleanUp();
+                    Console.WriteLine("The demo identity cannot delete infrastructure. To stop Cosmos DB charges, delete the dedicated demo resource group in Azure. Press any key to return.");
+                    Console.ReadKey(true);
                 }
                 else if (result.KeyChar == '8')
                 {

@@ -1,5 +1,4 @@
-﻿using Microsoft.Azure.Cosmos;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -40,12 +39,10 @@ namespace CosmosGlobalDistDemosCore
                         testRegion = configuration["testRegion"],
                         targetRegion = configuration["singleRegionReadRegion"],
                         endpoint = configuration["singleRegionEndpoint"],
-                        key = configuration["singleRegionKey"],
                         writeRegion = configuration["singleRegionWriteRegion"],
                         readRegion = configuration["singleRegionReadRegion"],
                         databaseId = configuration["databaseId"],
                         containerId = configuration["containerId"],
-                        partitionKeyPath = configuration["partitionKeyPath"],
                         partitionKeyValue = configuration["partitionKeyValue"]
                     },
 
@@ -57,19 +54,17 @@ namespace CosmosGlobalDistDemosCore
                         testRegion = configuration["testRegion"],
                         targetRegion = configuration["MultiRegionReadRegion"],
                         endpoint = configuration["multiRegionEndpoint"],
-                        key = configuration["multiRegionKey"],
                         writeRegion = configuration["MultiRegionWriteRegion"],
                         readRegion = configuration["MultiRegionReadRegion"],
                         databaseId = configuration["databaseId"],
                         containerId = configuration["containerId"],
-                        partitionKeyPath = configuration["partitionKeyPath"],
                         partitionKeyValue = configuration["partitionKeyValue"]
                     }
                 };
 
                 foreach (Benchmark benchmark in benchmarks)
                 {
-                    benchmark.client = new CosmosClient(benchmark.endpoint, benchmark.key, new CosmosClientOptions { ApplicationRegion = benchmark.targetRegion });
+                    benchmark.client = Helpers.CreateClient(benchmark.endpoint, benchmark.targetRegion);
                 }
             }
             catch(Exception e)
@@ -123,10 +118,6 @@ namespace CosmosGlobalDistDemosCore
                 Console.WriteLine(e.Message + "\nPress any key to continue");
                 Console.ReadKey();
             }
-        }
-        public async Task CleanUp()
-        {
-            await Benchmark.CleanUp(benchmarks);
         }
     }
 }

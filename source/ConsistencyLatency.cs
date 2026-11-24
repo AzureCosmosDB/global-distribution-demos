@@ -1,5 +1,4 @@
-﻿using Microsoft.Azure.Cosmos;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -37,12 +36,10 @@ namespace CosmosGlobalDistDemosCore
                         testRegion = configuration["testRegion"],
                         targetRegion = configuration["EventualReplicaRegion"],
                         endpoint = configuration["EventualEndpoint"],
-                        key = configuration["EventualKey"],
                         writeRegion = configuration["EventualWriteRegion"],
                         readRegion = configuration["EventualReadRegion"],
                         databaseId = configuration["databaseId"],
                         containerId = configuration["containerId"],
-                        partitionKeyPath = configuration["partitionKeyPath"],
                         partitionKeyValue = configuration["partitionKeyValue"]
                     },
 
@@ -54,12 +51,10 @@ namespace CosmosGlobalDistDemosCore
                         testRegion = configuration["testRegion"],
                         targetRegion = configuration["Strong1kMilesReplicaRegion"],
                         endpoint = configuration["Strong1kMilesEndpoint"],
-                        key = configuration["Strong1kMilesKey"],
                         writeRegion = configuration["Strong1kMilesWriteRegion"],
                         readRegion = configuration["Strong1kMilesReadRegion"],
                         databaseId = configuration["databaseId"],
                         containerId = configuration["containerId"],
-                        partitionKeyPath = configuration["partitionKeyPath"],
                         partitionKeyValue = configuration["partitionKeyValue"]
                     },
 
@@ -71,12 +66,10 @@ namespace CosmosGlobalDistDemosCore
                         testRegion = configuration["testRegion"],
                         targetRegion = configuration["Strong2kMilesReplicaRegion"],
                         endpoint = configuration["Strong2kMilesEndpoint"],
-                        key = configuration["Strong2kMilesKey"],
                         writeRegion = configuration["Strong2kMilesWriteRegion"],
                         readRegion = configuration["Strong2kMilesReadRegion"],
                         databaseId = configuration["databaseId"],
                         containerId = configuration["containerId"],
-                        partitionKeyPath = configuration["partitionKeyPath"],
                         partitionKeyValue = configuration["partitionKeyValue"]
                     },
 
@@ -88,12 +81,10 @@ namespace CosmosGlobalDistDemosCore
                         testRegion = configuration["testRegion"],
                         targetRegion = configuration["EventualReadRegion"],
                         endpoint = configuration["EventualEndpoint"],
-                        key = configuration["EventualKey"],
                         writeRegion = configuration["EventualWriteRegion"],
                         readRegion = configuration["EventualReadRegion"],
                         databaseId = configuration["databaseId"],
                         containerId = configuration["containerId"],
-                        partitionKeyPath = configuration["partitionKeyPath"],
                         partitionKeyValue = configuration["partitionKeyValue"]
                     },
 
@@ -105,19 +96,17 @@ namespace CosmosGlobalDistDemosCore
                         testDescription = $"Test 100 Reads against account with Strong Consistency to measure RU/s (Throughput) usage",
                         targetRegion = configuration["Strong1kMilesReadRegion"],
                         endpoint = configuration["Strong1kMilesEndpoint"],
-                        key = configuration["Strong1kMilesKey"],
                         writeRegion = configuration["Strong1kMilesWriteRegion"],
                         readRegion = configuration["Strong1kMilesReadRegion"],
                         databaseId = configuration["databaseId"],
                         containerId = configuration["containerId"],
-                        partitionKeyPath = configuration["partitionKeyPath"],
                         partitionKeyValue = configuration["partitionKeyValue"]
                     }
                 };
 
                 foreach (Benchmark benchmark in benchmarks)
                 {
-                    benchmark.client = new CosmosClient(benchmark.endpoint, benchmark.key, new CosmosClientOptions { ApplicationRegion = benchmark.targetRegion });
+                    benchmark.client = Helpers.CreateClient(benchmark.endpoint, benchmark.targetRegion);
                 }
             }
             catch (Exception e)
@@ -174,10 +163,6 @@ namespace CosmosGlobalDistDemosCore
                 Console.WriteLine(e.Message + "\nPress any key to continue");
                 Console.ReadKey();
             }
-        }
-        public async Task CleanUp()
-        {
-            await Benchmark.CleanUp(benchmarks);
         }
     }
 }
