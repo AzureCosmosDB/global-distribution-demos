@@ -84,7 +84,7 @@ var accounts = [
     name: account_consistency_strong
     location: 'West US 2'
     consistency: 'Strong'
-    multiMaster: true
+    multiMaster: false
     locations: [
       {
         locationName: 'West US 2'
@@ -100,7 +100,7 @@ var accounts = [
     name: account_consistency_strong2
     location: 'West US 2'
     consistency: 'Strong'
-    multiMaster: true
+    multiMaster: false
     locations: [
       {
         locationName: 'West US 2'
